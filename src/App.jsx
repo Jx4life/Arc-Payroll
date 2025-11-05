@@ -52,7 +52,7 @@ const USDC_ABI = [
 ];
 
 const ARC_TESTNET_CONFIG = {
-  chainId: '0x4CF352',
+  chainId: '0x4CEF52',
   chainName: 'Arc Testnet',
   nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
   rpcUrls: ['https://rpc.testnet.arc.network'],
