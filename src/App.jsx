@@ -105,6 +105,20 @@ export default function PayrollPlatform() {
     return BigInt(intPart + paddedDec);
   };
 
+   const checkNetwork = async () => {
+    try {
+      const chainId = await web3.eth.getChainId();
+      if (chainId !== BigInt(5042002)) {
+        showMessage('error', '❌ Wrong network! Please switch to Arc Testnet (Chain ID: 5042002)');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      showMessage('error', '❌ Cannot connect to network. Check your connection.');
+      return false;
+    }
+  };
+
   const connectWallet = async () => {
     try {
       if (!window.ethereum) {
@@ -223,77 +237,212 @@ export default function PayrollPlatform() {
   };
 
   const fundContract = async () => {
-    if (!fundAmount || parseFloat(fundAmount) <= 0) {
-      showMessage('error', 'Enter valid amount');
+  if (!fundAmount || parseFloat(fundAmount) <= 0) {
+    showMessage('error', '❌ Please enter a valid amount greater than 0');
+    return;
+  }
+  
+  const amount = parseFloat(fundAmount);
+  if (amount < 0.000001) {
+    showMessage('error', '❌ Amount too small. Minimum is 0.000001 USDC');
+    return;
+  }
+
+  try {
+    setLoading(true);
+    showMessage('info', '⏳ Step 1/3: Checking your USDC balance...');
+    
+    const usdc = new web3.eth.Contract(USDC_ABI, USDC_CONTRACT_ADDRESS);
+    const userBalance = await usdc.methods.balanceOf(account).call();
+    const amountBigInt = parseUnits(fundAmount, 6);
+    
+    if (BigInt(userBalance) < amountBigInt) {
+      showMessage('error', `❌ Insufficient USDC. You have ${formatUnits(userBalance.toString(), 6)} USDC. Get more from https://faucet.circle.com`);
+      setLoading(false);
       return;
     }
-    try {
-      setLoading(true);
-      const usdc = new web3.eth.Contract(USDC_ABI, USDC_CONTRACT_ADDRESS);
-      const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
-      const amount = parseUnits(fundAmount, 6).toString();
-      await usdc.methods.approve(selectedPayroll.payrollContract, amount).send({ from: account });
-      await payroll.methods.fundContract(amount).send({ from: account });
-      showMessage('success', 'Contract funded!');
-      setFundAmount('');
-      await loadPayrollData();
-      await loadAccountBalance();
-    } catch (error) {
-      showMessage('error', 'Failed to fund');
-    } finally {
-      setLoading(false);
+    
+    showMessage('info', '⏳ Step 2/3: Approving USDC spending...');
+    const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
+    
+    await usdc.methods.approve(selectedPayroll.payrollContract, amountBigInt.toString()).send({ from: account });
+    
+    showMessage('info', '⏳ Step 3/3: Funding contract...');
+    await payroll.methods.fundContract(amountBigInt.toString()).send({ from: account });
+    
+    showMessage('success', `✅ Successfully funded with ${fundAmount} USDC!`);
+    setFundAmount('');
+    await loadPayrollData();
+    await loadAccountBalance();
+  } catch (error) {
+    console.error('Fund error:', error);
+    
+    if (error.message.includes('User denied')) {
+      showMessage('error', '❌ Transaction cancelled');
+    } else if (error.message.includes('insufficient funds')) {
+      showMessage('error', '❌ Insufficient USDC for gas. Get testnet USDC from https://faucet.circle.com');
+    } else {
+      showMessage('error', `❌ Failed to fund contract: ${error.message.slice(0, 100)}`);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const addOrUpdateEmployee = async () => {
-    if (!newEmployee.address || !newEmployee.salary || !newEmployee.name || !newEmployee.role) {
-      showMessage('error', 'Fill all fields');
-      return;
-    }
-    try {
-      setLoading(true);
-      const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
-      const salaryInUsdc = parseUnits(newEmployee.salary, 6).toString();
-      await payroll.methods.setSalary(newEmployee.address, salaryInUsdc, newEmployee.name, newEmployee.role).send({ from: account });
-      showMessage('success', 'Employee added!');
-      setNewEmployee({ address: '', salary: '', name: '', role: '' });
-      await loadPayrollData();
-    } catch (error) {
-      showMessage('error', 'Failed to add');
-    } finally {
-      setLoading(false);
-    }
-  };
+const addOrUpdateEmployee = async () => {
+  // Validation with specific error messages
+  if (!newEmployee.address) {
+    showMessage('error', '❌ Employee wallet address is required');
+    return;
+  }
+  
+  if (!newEmployee.address.startsWith('0x') || newEmployee.address.length !== 42) {
+    showMessage('error', '❌ Invalid wallet address format. Must start with 0x and be 42 characters');
+    return;
+  }
+  
+  if (!newEmployee.salary) {
+    showMessage('error', '❌ Salary amount is required');
+    return;
+  }
+  
+  if (parseFloat(newEmployee.salary) <= 0) {
+    showMessage('error', '❌ Salary must be greater than 0');
+    return;
+  }
+  
+  if (!newEmployee.name || newEmployee.name.trim() === '') {
+    showMessage('error', '❌ Employee name is required');
+    return;
+  }
+  
+  if (!newEmployee.role || newEmployee.role.trim() === '') {
+    showMessage('error', '❌ Employee role is required');
+    return;
+  }
 
-  const paySingleEmployee = async (employeeAddress) => {
+  try {
+    setLoading(true);
+    showMessage('info', '⏳ Step 1/2: Preparing transaction...');
+    
+    const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
+    const salaryInUsdc = parseUnits(newEmployee.salary, 6).toString();
+    
+    showMessage('info', '⏳ Step 2/2: Please confirm transaction in MetaMask...');
+    
+    await payroll.methods.setSalary(
+      newEmployee.address, 
+      salaryInUsdc, 
+      newEmployee.name, 
+      newEmployee.role
+    ).send({ from: account });
+    
+    showMessage('success', '✅ Employee added successfully!');
+    setNewEmployee({ address: '', salary: '', name: '', role: '' });
+    await loadPayrollData();
+  } catch (error) {
+    console.error('Full error:', error);
+    
+    // Parse specific error types
+    if (error.message.includes('User denied')) {
+      showMessage('error', '❌ Transaction cancelled by user');
+    } else if (error.message.includes('insufficient funds')) {
+      showMessage('error', '❌ Insufficient USDC for gas fees. Get testnet USDC from https://faucet.circle.com');
+    } else if (error.message.includes('Not authorized')) {
+      showMessage('error', '❌ You are not the owner of this payroll contract');
+    } else if (error.message.includes('execution reverted')) {
+      showMessage('error', '❌ Transaction failed. Check: 1) You are the owner 2) Employee address is valid 3) You have enough gas');
+    } else if (error.message.includes('nonce')) {
+      showMessage('error', '❌ Transaction nonce error. Try resetting MetaMask (Settings > Advanced > Reset Account)');
+    } else if (error.message.includes('network')) {
+      showMessage('error', '❌ Network error. Check: 1) You are on Arc Testnet 2) RPC is responding');
+    } else {
+      showMessage('error', `❌ Failed to add employee: ${error.message.slice(0, 100)}`);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
+
+const paySingleEmployee = async (employeeAddress) => {
+    if (!await checkNetwork()) return;
+    
     try {
       setLoading(true);
+      showMessage('info', '⏳ Processing payment...');
+      
       const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
+      
+      // Check contract balance first
+      const balance = await payroll.methods.getContractBalance().call();
+      const employee = employees.find(e => e.address === employeeAddress);
+      const salaryAmount = parseUnits(employee.salary, 6);
+      
+      if (BigInt(balance) < salaryAmount) {
+        showMessage('error', `❌ Insufficient contract balance. Need ${employee.salary} USDC but have ${formatUnits(balance.toString(), 6)} USDC. Please fund the contract first.`);
+        setLoading(false);
+        return;
+      }
+      
       await payroll.methods.paySalary(employeeAddress).send({ from: account });
-      showMessage('success', 'Salary paid!');
+      showMessage('success', `✅ Paid ${employee.name} ${employee.salary} USDC!`);
       await loadPayrollData();
       await loadAccountBalance();
     } catch (error) {
-      showMessage('error', 'Failed to pay');
+      console.error('Payment error:', error);
+      
+      if (error.message.includes('Insufficient USDC')) {
+        showMessage('error', '❌ Contract has insufficient USDC balance. Fund the contract first.');
+      } else if (error.message.includes('Employee not found')) {
+        showMessage('error', '❌ Employee not found in payroll system');
+      } else if (error.message.includes('User denied')) {
+        showMessage('error', '❌ Transaction cancelled');
+      } else {
+        showMessage('error', `❌ Payment failed: ${error.message.slice(0, 100)}`);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const payAllEmployees = async () => {
+const payAllEmployees = async () => {
+    if (!await checkNetwork()) return;
+    
     try {
       setLoading(true);
+      showMessage('info', '⏳ Processing bulk payment...');
+      
       const payroll = new web3.eth.Contract(PAYROLL_ABI, selectedPayroll.payrollContract);
+      
+      // Check if contract has enough balance
+      const balance = await payroll.methods.getContractBalance().call();
+      const totalNeeded = parseUnits(totalExpense, 6);
+      
+      if (BigInt(balance) < totalNeeded) {
+        showMessage('error', `❌ Insufficient balance. Need ${totalExpense} USDC but have ${formatUnits(balance.toString(), 6)} USDC`);
+        setLoading(false);
+        return;
+      }
+      
       await payroll.methods.payAllSalaries().send({ from: account });
-      showMessage('success', 'All paid!');
+      showMessage('success', `✅ All employees paid successfully!`);
       await loadPayrollData();
       await loadAccountBalance();
     } catch (error) {
-      showMessage('error', 'Failed to pay all');
+      console.error('Bulk payment error:', error);
+      
+      if (error.message.includes('Insufficient USDC')) {
+        showMessage('error', '❌ Contract ran out of USDC during bulk payment. Some employees may have been paid.');
+      } else if (error.message.includes('User denied')) {
+        showMessage('error', '❌ Transaction cancelled');
+      } else {
+        showMessage('error', `❌ Bulk payment failed: ${error.message.slice(0, 100)}`);
+      }
     } finally {
       setLoading(false);
     }
   };
+
 return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-6xl mx-auto">
@@ -418,6 +567,36 @@ return (
             </div>
           </>
         )}
+        
+        {account && selectedPayroll && isOwner && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mt-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">🔧 Troubleshooting</h2>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="text-green-600" size={16} />
+                <span>Connected to Arc Testnet (Chain ID: 5042002)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="text-green-600" size={16} />
+                <span>Wallet Balance: {accountBalance} USDC</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="text-green-600" size={16} />
+                <span>Contract Balance: {contractBalance} USDC</span>
+              </div>
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p className="font-semibold text-blue-800 mb-2">Common Issues:</p>
+                <ul className="text-blue-700 space-y-1 text-xs">
+                  <li>• <strong>Transaction failing?</strong> Make sure you have USDC for gas fees</li>
+                  <li>• <strong>Can't add employee?</strong> Verify you're the contract owner</li>
+                  <li>• <strong>Payment failing?</strong> Check contract has sufficient balance</li>
+                  <li>• <strong>Need testnet USDC?</strong> Visit <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer" className="underline">faucet.circle.com</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {!account&&(<div className="bg-white rounded-lg shadow-lg p-12 text-center"><Wallet size={64} className="mx-auto text-gray-400 mb-4"/><h2 className="text-2xl font-semibold text-gray-800 mb-2">Connect Wallet</h2><p className="text-gray-600">Connect to manage payrolls</p></div>)}
       </div>
     </div>
