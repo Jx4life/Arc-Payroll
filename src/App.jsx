@@ -72,7 +72,7 @@ export default function PayrollPlatform() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [companyName, setCompanyName] = useState('');
-  const [newEmployee, setNewEmployee] = useState({ walletaddress: '', salary: '', name: '', role: '' });
+  const [newEmployee, setNewEmployee] = useState({ address: '', salary: '', name: '', role: '' });
   const [fundAmount, setFundAmount] = useState('');
   const [showHistory, setShowHistory] = useState(false);
 
@@ -215,7 +215,7 @@ export default function PayrollPlatform() {
             const empData = await payroll.methods.getEmployee(addr).call();
             return { address: addr, salary: formatUnits(empData[0].toString(), 6), name: empData[1], role: empData[2] };
           } catch (err) {
-            return { walletaddress: addr, salary: '0', name: '', role: '' };
+            return { address: addr, salary: '0', name: '', role: '' };
           }
         })
       );
@@ -338,7 +338,7 @@ const addOrUpdateEmployee = async () => {
     ).send({ from: account });
     
     showMessage('success', '✅ Employee added successfully!');
-    setNewEmployee({ walletaddress: '', salary: '', name: '', role: '' });
+    setNewEmployee({ address: '', salary: '', name: '', role: '' });
     await loadPayrollData();
   } catch (error) {
     console.error('Full error:', error);
@@ -523,7 +523,7 @@ return (
                 <input type="text" placeholder="Role" value={newEmployee.role} onChange={(e)=>setNewEmployee({...newEmployee,role:e.target.value})} className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
               </div>
               <div className="flex gap-4">
-                <input type="text" placeholder="Address" value={newEmployee.address} onChange={(e)=>setNewEmployee({...newEmployee,address:e.target.value})} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+                <input type="text" placeholder="Wallet Address" value={newEmployee.address} onChange={(e)=>setNewEmployee({...newEmployee,address:e.target.value})} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
                 <input type="number" placeholder="Salary" value={newEmployee.salary} onChange={(e)=>setNewEmployee({...newEmployee,salary:e.target.value})} className="w-40 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
                 <button onClick={addOrUpdateEmployee} disabled={loading} className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50">{loading?'Processing...':'Add'}</button>
               </div>
