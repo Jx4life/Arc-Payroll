@@ -72,7 +72,7 @@ export default function PayrollPlatform() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [companyName, setCompanyName] = useState('');
-  const [newEmployee, setNewEmployee] = useState({ address: '', salary: '', name: '', role: '' });
+  const [newEmployee, setNewEmployee] = useState({ wallet address: '', salary: '', name: '', role: '' });
   const [fundAmount, setFundAmount] = useState('');
   const [showHistory, setShowHistory] = useState(false);
 
@@ -215,7 +215,7 @@ export default function PayrollPlatform() {
             const empData = await payroll.methods.getEmployee(addr).call();
             return { address: addr, salary: formatUnits(empData[0].toString(), 6), name: empData[1], role: empData[2] };
           } catch (err) {
-            return { address: addr, salary: '0', name: '', role: '' };
+            return { wallet address: addr, salary: '0', name: '', role: '' };
           }
         })
       );
@@ -338,7 +338,7 @@ const addOrUpdateEmployee = async () => {
     ).send({ from: account });
     
     showMessage('success', '✅ Employee added successfully!');
-    setNewEmployee({ address: '', salary: '', name: '', role: '' });
+    setNewEmployee({ wallet address: '', salary: '', name: '', role: '' });
     await loadPayrollData();
   } catch (error) {
     console.error('Full error:', error);
